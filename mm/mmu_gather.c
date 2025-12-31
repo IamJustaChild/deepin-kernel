@@ -105,6 +105,39 @@ static void tlb_batch_pages_flush(struct mmu_gather *tlb)
 	tlb->active = &tlb->local;
 }
 
+#if defined(CONFIG_PTP) && defined(CONFIG_X86_64)
+static void ptp_tlb_batch_pages_flush(struct mmu_gather *tlb)
+{
+	struct mmu_gather_batch *batch;
+
+	for (batch = &tlb->local; batch && batch->nr; batch = batch->next) {
+		struct encoded_page **pages = batch->encoded_pages;
+
+		do {
+			/*
+			 * limit free batch count when PAGE_SIZE > 4K
+			 */
+			unsigned int nr = min(512U, batch->nr);
+			int i;
+
+			// replace `free_pages_and_swap_cache(pages, nr);` with below
+			for (i = 0; i < nr; i++) {
+				struct encoded_page *enc = pages[i];
+				struct page *page = encoded_page_ptr(enc);
+
+				__ptp_tlb_remove_table((void *)page);
+			}
+
+			pages += nr;
+			batch->nr -= nr;
+
+			cond_resched();
+		} while (batch->nr);
+	}
+	tlb->active = &tlb->local;
+}
+#endif
+
 static void tlb_batch_list_free(struct mmu_gather *tlb)
 {
 	struct mmu_gather_batch *batch, *next;
@@ -274,6 +307,90 @@ void tlb_remove_table(struct mmu_gather *tlb, void *table)
 		tlb_table_flush(tlb);
 }
 
+#if defined(CONFIG_PTP) && defined(CONFIG_X86_64)
+static void __ptp_tlb_remove_table_free(struct mmu_table_batch *batch)
+{
+	int i;
+
+	for (i = 0; i < batch->nr; i++)
+		__ptp_tlb_remove_table(batch->tables[i]);
+
+	free_page((unsigned long)batch);
+}
+
+#ifdef CONFIG_MMU_GATHER_RCU_TABLE_FREE
+struct ptp_remove_table_work {
+	struct work_struct work;
+	struct mmu_table_batch *batch;
+};
+
+static void ptp_remove_table(struct work_struct *work)
+{
+	struct ptp_remove_table_work *ptp_remove_table_work =
+			container_of(work, struct ptp_remove_table_work, work);
+
+	__ptp_tlb_remove_table_free(ptp_remove_table_work->batch);
+	kfree(ptp_remove_table_work);
+}
+
+static void ptp_tlb_remove_table_rcu(struct rcu_head *head)
+{
+	struct ptp_remove_table_work *ptp_remove_table_work =
+			kmalloc(sizeof(struct ptp_remove_table_work), GFP_ATOMIC);
+
+	ptp_remove_table_work->batch = container_of(head, struct mmu_table_batch, rcu);
+	INIT_WORK(&ptp_remove_table_work->work, ptp_remove_table);
+	schedule_work(&ptp_remove_table_work->work);
+}
+
+static void ptp_tlb_remove_table_free(struct mmu_table_batch *batch)
+{
+	call_rcu(&batch->rcu, ptp_tlb_remove_table_rcu);
+}
+#else
+static void ptp_tlb_remove_table_free(struct mmu_table_batch *batch)
+{
+	__ptp_tlb_remove_table_free(batch);
+}
+#endif
+
+static void ptp_tlb_remove_table_one(void *table)
+{
+	tlb_remove_table_sync_one();
+	__ptp_tlb_remove_table(table);
+}
+
+static void ptp_tlb_table_flush(struct mmu_gather *tlb)
+{
+	struct mmu_table_batch **batch = &tlb->batch;
+
+	if (*batch) {
+		tlb_table_invalidate(tlb);
+		ptp_tlb_remove_table_free(*batch);
+		*batch = NULL;
+	}
+}
+
+void ptp_tlb_remove_table(struct mmu_gather *tlb, void *table)
+{
+	struct mmu_table_batch **batch = &tlb->batch;
+
+	if (*batch == NULL) {
+		*batch = (struct mmu_table_batch *)__get_free_page(GFP_NOWAIT | __GFP_NOWARN);
+		if (*batch == NULL) {
+			tlb_table_invalidate(tlb);
+			ptp_tlb_remove_table_one(table);
+			return;
+		}
+		(*batch)->nr = 0;
+	}
+
+	(*batch)->tables[(*batch)->nr++] = table;
+	if ((*batch)->nr == MAX_TABLE_BATCH)
+		ptp_tlb_table_flush(tlb);
+}
+#endif
+
 static inline void tlb_table_init(struct mmu_gather *tlb)
 {
 	tlb->batch = NULL;
@@ -396,3 +513,55 @@ void tlb_finish_mmu(struct mmu_gather *tlb)
 #endif
 	dec_tlb_flush_pending(tlb->mm);
 }
+
+#if defined(CONFIG_PTP) && defined(CONFIG_X86_64)
+static void ptp_tlb_flush_mmu_free(struct mmu_gather *tlb)
+{
+	ptp_tlb_table_flush(tlb);
+#ifndef CONFIG_MMU_GATHER_NO_GATHER
+	ptp_tlb_batch_pages_flush(tlb);
+#endif
+}
+
+void ptp_tlb_flush_mmu(struct mmu_gather *tlb)
+{
+	tlb_flush_mmu_tlbonly(tlb);
+	ptp_tlb_flush_mmu_free(tlb);
+}
+
+void ptp_tlb_finish_mmu(struct mmu_gather *tlb)
+{
+	/*
+	 * If there are parallel threads are doing PTE changes on same range
+	 * under non-exclusive lock (e.g., mmap_lock read-side) but defer TLB
+	 * flush by batching, one thread may end up seeing inconsistent PTEs
+	 * and result in having stale TLB entries.  So flush TLB forcefully
+	 * if we detect parallel PTE batching threads.
+	 *
+	 * However, some syscalls, e.g. munmap(), may free page tables, this
+	 * needs force flush everything in the given range. Otherwise this
+	 * may result in having stale TLB entries for some architectures,
+	 * e.g. aarch64, that could specify flush what level TLB.
+	 */
+	if (mm_tlb_flush_nested(tlb->mm)) {
+		/*
+		 * The aarch64 yields better performance with fullmm by
+		 * avoiding multiple CPUs spamming TLBI messages at the
+		 * same time.
+		 *
+		 * On x86 non-fullmm doesn't yield significant difference
+		 * against fullmm.
+		 */
+		tlb->fullmm = 1;
+		__tlb_reset_range(tlb);
+		tlb->freed_tables = 1;
+	}
+
+	ptp_tlb_flush_mmu(tlb);
+
+#ifndef CONFIG_MMU_GATHER_NO_GATHER
+	tlb_batch_list_free(tlb);
+#endif
+	dec_tlb_flush_pending(tlb->mm);
+}
+#endif
