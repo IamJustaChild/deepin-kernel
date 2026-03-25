@@ -37,6 +37,10 @@
 #include <asm/tlbflush.h>
 #include <asm/tlb.h>
 
+#ifdef CONFIG_PTP
+#include <linux/haoc-ptp.h>
+#endif
+
 #include "internal.h"
 
 bool can_change_pte_writable(struct vm_area_struct *vma, unsigned long addr,
@@ -585,6 +589,9 @@ mprotect_fixup(struct vma_iterator *vmi, struct mmu_gather *tlb,
 	unsigned long charged = 0;
 	pgoff_t pgoff;
 	int error;
+#if defined(CONFIG_PTP) && defined(CONFIG_X86_64)
+	unsigned long cr0;
+#endif
 
 	if (newflags == oldflags) {
 		*pprev = vma;
@@ -665,7 +672,13 @@ success:
 		mm_cp_flags |= MM_CP_TRY_CHANGE_WRITABLE;
 	vma_set_page_prot(vma);
 
+#if defined(CONFIG_PTP) && defined(CONFIG_X86_64)
+	ptp_disable_wp(&cr0);
+#endif
 	change_protection(tlb, vma, start, end, mm_cp_flags);
+#if defined(CONFIG_PTP) && defined(CONFIG_X86_64)
+	ptp_restore_wp(cr0);
+#endif
 
 	/*
 	 * Private VM_LOCKED VMA becoming writable: trigger COW to avoid major
