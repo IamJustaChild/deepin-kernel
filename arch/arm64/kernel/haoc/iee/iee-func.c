@@ -218,6 +218,10 @@ void set_iee_address_invalid(unsigned long lm_addr, unsigned int order)
 static void iee_set_sensitive_pte(pte_t *lm_ptep, pte_t *iee_ptep, int order,
 				int use_block_pmd)
 {
+#ifdef CONFIG_PTP
+	iee_rw_gate(IEE_OP_SET_SENSITIVE_PTE, lm_ptep, iee_ptep, order,
+		     use_block_pmd);
+#else
 	int i;
 
 	if (use_block_pmd) {
@@ -247,10 +251,15 @@ static void iee_set_sensitive_pte(pte_t *lm_ptep, pte_t *iee_ptep, int order,
 	}
 	dsb(ishst);
 	isb();
+#endif
 }
 
 static void iee_unset_sensitive_pte(pte_t *lm_ptep, pte_t *iee_ptep, int order, int use_block_pmd)
 {
+#ifdef CONFIG_PTP
+	iee_rw_gate(IEE_OP_UNSET_SENSITIVE_PTE, lm_ptep, iee_ptep, order,
+		     use_block_pmd);
+#else
 	int i;
 
 	if (use_block_pmd) {
@@ -280,6 +289,7 @@ static void iee_unset_sensitive_pte(pte_t *lm_ptep, pte_t *iee_ptep, int order, 
 	}
 	dsb(ishst);
 	isb();
+#endif
 }
 
 /* Only support address range smaller then one PMD block. */
@@ -398,20 +408,21 @@ static void remove_pages_from_iee(unsigned long addr, int order)
 /* See put_pages_into_iee(). */
 void set_iee_page_type(unsigned long addr, int order, enum HAOC_BITMAP_TYPE type)
 {
-	put_pages_into_iee(addr, order);
-	iee_set_bitmap_type(addr, 1UL << order, type);
+	set_iee_page(addr, order, type);
 }
 
 /* See put_pages_into_iee(). */
-void set_iee_page(unsigned long addr, int order)
+void set_iee_page(unsigned long addr, int order, enum HAOC_BITMAP_TYPE type)
 {
 	put_pages_into_iee(addr, order);
+	iee_set_bitmap_type(addr, 1UL << order, type);
 }
 
 /* See remove_pages_from_iee(). */
 void unset_iee_page(unsigned long addr, int order)
 {
 	remove_pages_from_iee(addr, order);
+	iee_set_bitmap_type(addr, 1UL << order, IEE_NORMAL);
 }
 
 unsigned int iee_calculate_order(struct kmem_cache *s, unsigned int order)

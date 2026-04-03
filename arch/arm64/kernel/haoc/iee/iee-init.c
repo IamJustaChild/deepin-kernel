@@ -72,13 +72,6 @@ void __init iee_init_post(void)
 	if (!haoc_enabled)
 		return;
 
-	iee_setup_rw_gate();
-	iee_setup_asid();
-	/* Flush tlb to enable IEE. */
-	flush_tlb_all();
-
-	iee_init_done = true;
-
 	haoc_bitmap_sparse_init();
 	haoc_bitmap_setup();
 
@@ -90,6 +83,19 @@ void __init iee_init_post(void)
 	extern void iee_si_init(void);
 	iee_si_init();
 #endif
+}
+
+void __init iee_enable_rw_gate(void)
+{
+	if (!haoc_enabled || iee_init_done)
+		return;
+
+	iee_setup_rw_gate();
+	iee_setup_asid();
+	/* Flush tlb to enable IEE. */
+	flush_tlb_all();
+
+	iee_init_done = true;
 }
 
 void __init iee_stack_init(void)
