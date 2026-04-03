@@ -5,6 +5,10 @@
 #ifndef __ASM_PGTABLE_H
 #define __ASM_PGTABLE_H
 
+#ifdef CONFIG_PTP
+#include <asm/haoc/iee-pgtable.h>
+#else
+
 #include <asm/bug.h>
 #include <asm/proc-fns.h>
 
@@ -1137,5 +1141,7 @@ extern void ptep_modify_prot_commit(struct vm_area_struct *vma,
 				    unsigned long addr, pte_t *ptep,
 				    pte_t old_pte, pte_t new_pte);
 #endif /* !__ASSEMBLY__ */
+
+#endif /* !CONFIG_PTP */
 
 #endif /* __ASM_PGTABLE_H */
