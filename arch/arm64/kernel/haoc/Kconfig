@@ -118,4 +118,11 @@ config IEE_SELINUX_P
 		If unsure, say N.
 	depends on SECURITY_SELINUX
 	depends on IEE
+
+config VARP
+	bool "Variable Protection(VARP)"
+	help
+		Protect variables with IEE. At present, only modprobe_path is covered.
+	depends on IEE
+
 endmenu # HAOC
