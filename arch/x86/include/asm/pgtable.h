@@ -1316,7 +1316,7 @@ static inline void ptep_set_wrprotect(struct mm_struct *mm,
 			if (try_cmpxchg((long *)&ptep->pte, (long *)&old_pte,
 					*(long *)&new_pte))
 				break;
-		} else if (ptp_try_cmpxchg((long *)ptep, pte_val(old_pte), 
+		} else if (ptp_try_cmpxchg((long *)ptep, pte_val(old_pte),
 					pte_val(new_pte))) {
 			break;
 		}
@@ -1395,10 +1395,10 @@ static inline void pmdp_set_wrprotect(struct mm_struct *mm,
 	do {
 		new_pmd = pmd_wrprotect(old_pmd);
 		if (ptp_is_user_pgtable(pmdp)) {
-			if (try_cmpxchg((long *)pmdp, (long *)&old_pmd, 
+			if (try_cmpxchg((long *)pmdp, (long *)&old_pmd,
 					*(long *)&new_pmd))
 				break;
-		} else if ((ptp_try_cmpxchg((long *)pmdp, pmd_val(old_pmd), 
+		} else if ((ptp_try_cmpxchg((long *)pmdp, pmd_val(old_pmd),
 					pmd_val(new_pmd)))) {
 			break;
 		}
