@@ -28,6 +28,7 @@ iee_func iee_funcs[] = {
 	(iee_func)_iee_invalidate_token,
 	(iee_func)_iee_validate_token,
 #endif
+	(iee_func)_iee_set_bitmap_type,
 #ifdef CONFIG_CREDP
 	(iee_func)_iee_copy_cred,
 	(iee_func)_iee_copy_kernel_cred,

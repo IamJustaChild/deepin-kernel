@@ -10,6 +10,7 @@
 #ifndef _LINUX_HAOC_H
 #define _LINUX_HAOC_H
 
+#include <asm/haoc/haoc-bitmap.h>
 #include <linux/types.h>
 #include <linux/sched.h>
 
@@ -24,6 +25,8 @@ void _iee_set_token_pgd(unsigned long __unused, struct task_struct *tsk,
 void _iee_invalidate_token(unsigned long __unused, struct task_struct *tsk);
 void _iee_validate_token(unsigned long __unused, struct task_struct *tsk);
 #endif
+void _iee_set_bitmap_type(unsigned long __unused, uint8_t *bitmap_ptr,
+		enum HAOC_BITMAP_TYPE type, int num_pages);
 
 #ifdef CONFIG_CREDP
 #include <linux/cred.h>

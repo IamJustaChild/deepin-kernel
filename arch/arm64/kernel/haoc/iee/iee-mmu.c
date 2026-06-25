@@ -13,6 +13,7 @@
 #include <linux/hugetlb.h>
 #include <asm/pgalloc.h>
 #include <asm/pgtable.h>
+#include <asm/haoc/haoc-bitmap.h>
 #include <asm/haoc/iee.h>
 #include <asm/haoc/iee-asm.h>
 #include <asm/haoc/iee-init.h>
@@ -548,6 +549,23 @@ void __init iee_init_mappings(pgd_t *pgdp)
 
 	iee_init_tcr();
 	iee_setup_bootcpu_stack();
+}
+
+static void setup_iee_data_cache_bitmap(struct iee_early_alloc *cache,
+					enum HAOC_BITMAP_TYPE type)
+{
+	int block_nr = cache->curr_block_nr + 1;
+
+	for (int j = 0; j < block_nr; j++) {
+		iee_set_bitmap_type((unsigned long)__va(cache->blocks[j].start),
+				1 << cache->blocks[j].order, type);
+	}
+}
+
+void __init setup_iee_early_data_bitmap(void)
+{
+	setup_iee_data_cache_bitmap(&iee_data, IEE_DATA);
+	setup_iee_data_cache_bitmap(&iee_stack, IEE_DATA);
 }
 
 static void prot_iee_early_data_cache(struct iee_early_alloc *cache)
