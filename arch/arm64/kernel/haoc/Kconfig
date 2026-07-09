@@ -38,10 +38,37 @@ config IEE_PTRP
 	bool "Pointer Protection for IEE(IEE_PTRP)"
 	depends on IEE
 	help
-		Provide IEE matadata for each process called task_token to allow
-		verifing pointers inside task_struct, like struct cred* that determines
-		the capabilities of a process.
-		Could be a enhancement of other sub-module of HAOC.
+		Enable task_token pointer protection for IEE. When the write-only
+		sub-option IEE_PTRP_W is disabled, both read and write checks are
+		active. When IEE_PTRP_W is enabled, only write protection is active.
+
+config IEE_PTRP_W
+	bool "Pointer Write-Only Protection for IEE to improve performance.(IEE_PTRP_W)"
+	depends on IEE_PTRP
+	help
+		Compared to IEE_PTRP, this option only performs write protection on pointers.
+		Enabling this option improves performance and reduces the protection surface.
+
+config IEE_CYCLE_CHECK
+	bool "Cycle check all process cred struct.(IEE_CYCLE_CHECK)"
+	depends on IEE_PTRP && !IEE_PTRP_W && CREDP
+	def_bool y
+	help
+		Perform periodic read protection checks on all processes.
+
+config IEE_CS_CHECK
+	bool "Context-Switch check cred struct.(CONFIG_IEE_CS_CHECK)"
+	depends on IEE_PTRP && !IEE_PTRP_W && CREDP
+	def_bool y
+	help
+		Perform read protection checks on processes during context switching.
+
+config IEE_IO_CHECK
+	bool "IO check cred struct.(CONFIG_IEE_IO_CHECK)"
+	depends on IEE_PTRP && !IEE_PTRP_W && CREDP
+	def_bool n
+	help
+		Perform read protection checks on the process during I/O operations.
 
 config IEE_SIP
 	bool "Sensitive Instruction Protection for IEE(IEE_SIP)"
